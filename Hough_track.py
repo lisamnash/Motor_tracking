@@ -1,42 +1,16 @@
-import argparse
+import os
 import sys
+import time
 
 import movie_instance as mi
+import tracking_helper_functions as thf
+from settings import tracking_settings
 
 if __name__ == '__main__':
-    '''example usage python Hough_track.py -i /Users/lisa/Dropbox/research/lisa/Motor_tracking_code/test_cine/2_Cam_7326_Cine3.cine -min_radius 25 -max_radius 33 -o /Users/lisa/Dropbox/research/lisa/Motor_tracking_code -min_val 0.02 -max_val 0.4 -pix 4'''
-
-    parser = argparse.ArgumentParser(description='Track points from a video')
-
-    parser.add_argument('-i', dest='input_file', type=str, help='input cine file. required', required=True)
-    parser.add_argument('-o', dest='output_directory', type=str, help='output directory.', default='./')
-    parser.add_argument('-ff', dest='ff', type=int, help='first frame to track', default=0)
-    parser.add_argument('-lf', dest='lf', type=int, help='last frame to track', default=-1)
-    parser.add_argument('-append_fn', type=str, help='name to append to output directory for descriptive purposes')
-    parser.add_argument('-min_val', type=float, help='minimum brightness', default=0.05)
-    parser.add_argument('-max_val', type=float, help='maximum brightness', default=0.7)
-
-    parser.add_argument('-pix', type=int, help="Length of tracking box", default=8)
-    parser.add_argument('-cf', dest='cf', nargs='+', type=int,
-                        help='Frames to perform convolution. Use this if the point gets lost in a frame.', default=[0])
-
-    parser.add_argument('-min_radius', type=int, help='Minimum radius for Hough transform', default=17)
-    parser.add_argument('-max_radius', type=int, help='Maximum radius for Hough transform', default=23)
-    parser.add_argument('-tracked_image', type=bool, help='If True, plots all the frames with tracked points.',
-                        default=False)
-    parser.add_argument('-save_during', type=bool,
-                        help='If True, saves the points at each time step in a folder.  Does not save com_data file',
-                        default=False)
-    parser.add_argument('-save_com', type=bool, help='If True, saves com_data file', default=True)
-    parser.add_argument('-skip_Hough', dest='skip_Hough', type=bool,
-                        help='If True, skips Hough transform on all but the first frame', default=False)
-    parser.add_argument('-ffE', type=int, help='frames from end?', default=-1)
-
-    args = parser.parse_args()
 
     fns = []
-    if args.input_file:
-        fn = args.input_file
+    if 'input_dir' in tracking_settings:
+        fn = tracking_settings['input_dir']
 
         spl = fn.split('.')[-1]
 
@@ -44,41 +18,75 @@ if __name__ == '__main__':
             fns = [fn]
         else:
             # find all cines in directory
-            fns = mtf.find_files_by_extension(fn, '.cine', tot=True)
-
+            fns = thf.find_files_by_extension(fn, '.cine', tot=True)
 
     else:
         print 'No input file selected.  Exiting'
         sys.exit()
 
-    tracked_image = args.tracked_image
+    if 'output_dir' in tracking_settings:
+        output_dir = tracking_settings['output_dir']
+    else:
+        output_dir = './'
+
+    if not os.path.exists(output_dir):
+        os.mkdir(output_dir)
+
     for fn in fns:
         movie = mi.GyroMovieInstance(fn)
-        movie.set_tracking_size(args.pix)
-        movie.min_radius = args.min_radius
-        movie.max_radius = args.max_radius
-        movie.set_min_max_val(args.min_val, args.max_val)
+        output = fn.split('/')[-1]
+        output = output.split('.')[0]
+        if not os.path.exists(output):
+            os.mkdir(output)
 
-        ff = args.ff
+        checks = output + '/checks/'
+        if not os.path.exists(checks):
+            os.mkdir(checks)
 
-        if args.lf == -1:
-            lf = movie.num_frames
+        if 'pix' in tracking_settings:
+            movie.set_tracking_size(tracking_settings['pix'])
+
+        if 'min_max_radius' in tracking_settings:
+            movie.min_radius = tracking_settings['min_max_radius'][0]
+            movie.max_radius = tracking_settings['min_max_radius'][1]
+
+        if 'min_max_val' in tracking_settings:
+            movie.set_min_max_val(tracking_settings['min_max_val'][0], tracking_settings['min_max_val'][1])
+
+        if 'first_frame' in tracking_settings:
+            ff = tracking_settings['first_frame']
         else:
-            lf = args.lf
+            ff = 0
 
+        if 'last_frame' in tracking_settings:
+            if tracking_settings['last_frame'] >= ff:
+                lf = tracking_settings['last_frame']
+            else:
+                lf = movie.num_frames
+        else:
+            lf = movie.num_frames
+
+        st = time.time()
         for i in xrange(lf - ff):
+
             ind = i + ff
             movie.extract_frame_data(ind)
             movie.adjust_frame()
 
-            if ind in args.cf or i == (lf - ff) - 1:
-                movie.find_points_hough()
-                movie.save_frame_with_boxes(name='%03d' % ind)
-
             movie.center_on_bright(5)
 
-            if tracked_image:
-                movie.save_frame_with_boxes(name='%03d' % ind)
+            if 'tracked_image' in tracking_settings:
+                movie.save_frame_with_boxes(name=output + '/' + '%03d' % ind)
 
             if i % 100 == 0:
-                print 'frame', i , 'tracked...'
+                et = time.time()
+                if i > 0:
+                    print 'frame', i, 'tracked... ... %0.2f s per frame' % ((et - st) / i)
+                    if i % 200 == 0:
+                        movie.save_frame_with_boxes(name=checks + '/' + '%03d' % ind)
+
+            if ind in tracking_settings['cf']:
+                movie.find_points_hough()
+                movie.save_frame_with_boxes(name=output + '/' + '%03d' % ind)
+            if i == (lf - ff) - 1:
+                movie.save_frame_with_boxes(name=output + '/' + '%03d' % ind)
