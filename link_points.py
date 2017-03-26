@@ -10,23 +10,10 @@ import sys
 import time
 import tracking_helper_functions as thf
 from settings import tracking_settings
+from scipy.signal import savgol_filter
 
 
-def moving_average(values, window):
-    vv = values.T
-
-    new = []
-    for i in xrange(len(vv)):
-        weigths = np.repeat(1.0, window) / window
-        v = np.convolve(vv[i], weigths, 'valid')
-        new.append(v)
-    new = np.array(new)
-    return new.T
-
-
-if __name__ == '__main__':
-    root_dir = '/Volumes/labshared2/Lisa/2017_02_20_different_lighting/tracked/7p_6A_1_2/'
-
+def link_points(root_dir):
     file = os.path.join(root_dir, 'steps/steps.hdf5')
     num = 54
 
@@ -42,8 +29,6 @@ if __name__ == '__main__':
         else:
             start_key = keys[0]
 
-
-
     compare = np.array(data[start_key])
 
     fig = plt.figure()
@@ -54,7 +39,7 @@ if __name__ == '__main__':
     path = os.path.join(root_dir, 'com_data.hdf5')
     new = h5py.File(path, "w")
 
-    com_data = []
+
     for i in xrange(len(compare)):
         single_data = []
         times = []
@@ -77,7 +62,9 @@ if __name__ == '__main__':
                 single_data.append(pt[1:])
 
         single_data = np.array(single_data)
-        single_data = moving_average(single_data, 6)
+
+        single_data[:, 0] = savgol_filter(single_data[:, 0], 7, 1)
+        single_data[:, 1] = savgol_filter(single_data[:, 1], 7, 1)
         key_name = '%03d' % i
 
         dset = new.create_dataset((key_name), np.shape(single_data), dtype='float', data=single_data)
@@ -86,12 +73,17 @@ if __name__ == '__main__':
         if not os.path.exists(image_path):
             os.mkdir(image_path)
 
-        image_path = os.path.join(image_path, '%03d.png'%i)
+        image_path = os.path.join(image_path, '%03d.png' % i)
         fig = plt.figure()
         len_single = len(single_data)
-        plt.plot(times[:len_single], single_data[:,0])
+        plt.plot(times[:len_single], single_data[:, 0])
         plt.savefig(image_path)
+        plt.close()
 
     dset = new.create_dataset('times', np.shape(times), dtype='float', data=times)
     new.close()
     data.close()
+
+
+if __name__ == '__main__':
+    root_dir = '/Volumes/labshared2/Lisa/2017_02_21/tracked/7p_0p0A_5p5A_1_2/'

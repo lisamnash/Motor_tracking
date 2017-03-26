@@ -8,6 +8,8 @@ import math
 import PIL.Image as Image
 import PIL.ImageOps as ImageOps
 import matplotlib.cm as cm
+import scipy.ndimage.filters as filters
+import scipy.ndimage as ndimage
 
 
 class GyroMovieInstance:
@@ -91,6 +93,88 @@ class GyroMovieInstance:
 
         self.frame_current_points = np.array([self.circles[:, 0], self.circles[:, 1]], dtype=float).T
 
+
+    def center_on_bright_new(self, num_times):
+        new_points = []
+
+        for pt in self.frame_current_points:
+
+            w, h = np.shape(self.current_frame)
+            if ((pt[0] > 1.5 * self._pix) and (pt[1] > 1.5 * self._pix) and (pt[0] < w - 1.5 * self._pix) and (
+                pt[1] < h - 1.5 * self._pix)):
+                for j in xrange(num_times):
+                    # Center num_times in case the dot has moved partially out of the box during the step.
+                    # draw small boxes
+                    bf = self.current_frame[pt[1] - self._pix:pt[1] + self._pix]
+                    bf = bf[:, pt[0] - self._pix:pt[0] + self._pix]
+                    bf_comp = bf.copy()
+                    # let's clip this area to maximize the bright spot
+                    bf = bf.astype('f')
+
+
+                    bf_min = 0.8 * np.max(bf.flatten())
+                    bf_max = 1. * np.max(bf.flatten())
+                    bf = np.clip(bf, bf_min, bf_max) - bf_min
+                    bf = bf / (bf_max - bf_min)
+                    bf = cv2.GaussianBlur(bf, (3, 3), 2, 2)
+
+                    # find center of brightness
+                    data_max = filters.maximum_filter(bf, self._pix)
+                    data_min = filters.minimum_filter(bf, self._pix)
+                    maxima = (bf == data_max)
+                    dmax = max((data_max - data_min).flatten())
+                    dmin = min((data_max - data_min).flatten())
+                    minmax = (dmax - dmin)
+                    diff = ((data_max - data_min) >= dmin + 0.9 * minmax)
+                    maxima[diff == 0] = 0
+                    maxima = (bf == data_max)
+
+                    labeled, num_object = ndimage.label(maxima)
+                    slices = ndimage.find_objects(labeled)
+
+
+
+                    x, y = [], []
+                    for dx, dy in slices:
+                        rad = np.sqrt((dx.stop - dx.start) ** 2 + (dy.stop - dy.start) ** 2)
+                        if rad < 3:
+                            x_center = (dx.start + dx.stop) / 2
+                            x.append(x_center)
+                            y_center = (dy.start + dy.stop) / 2
+                            y.append(y_center)
+                    com = [x[0], y[0]]
+
+                    # find center of mass difference from center of box
+                    movx = self.dummy[1] - com[1]  # pix - com[0]
+                    movy = self.dummy[0] - com[0]  # pix - com[1]
+
+                    if math.isnan(movx):
+                        movx = 0
+                    if math.isnan(movy):
+                        movy = 0
+
+                    # move the points
+                    pt[0] = pt[0] - movx
+                    pt[1] = pt[1] - movy
+
+                    if j == num_times - 1:
+                        fig = plt.figure()
+                        plt.imshow(bf)
+
+                        plt.plot(pt[0], pt[1], 'ro')
+                        plt.show()
+
+                if np.mean(bf_comp) < 5 * self._mean_value:
+                    new_points.append(pt)
+
+        new_points = np.array(new_points, dtype=float)
+        ind = np.argsort(new_points[:, 0])
+        new_points = new_points[ind]
+        ind = np.argsort(new_points[:, 1])
+        new_points = new_points[ind]
+
+        self.frame_current_points = np.array(new_points, dtype=float)
+
     def center_on_bright(self, num_times=3):
         new_points = []
 
@@ -107,7 +191,7 @@ class GyroMovieInstance:
                     # let's clip this area to maximize the bright spot
                     bf = bf.astype('f')
 
-                    bf_min = 0.97 * np.min(bf.flatten())
+                    bf_min = 0.9 * np.max(bf.flatten())
                     bf_max = 1. * np.max(bf.flatten())
                     bf = np.clip(bf, bf_min, bf_max) - bf_min
                     bf = bf / (bf_max - bf_min)
