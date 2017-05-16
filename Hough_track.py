@@ -8,13 +8,12 @@ import sys
 import time
 import tracking_helper_functions as thf
 import Experiment_movies
-
 from settings import tracking_settings
 
 
 def run_tracking(tracking_settings):
     fns = []
-    print 'hello'
+
     if 'input_dir' in tracking_settings:
         fn = tracking_settings['input_dir']
 
@@ -26,6 +25,9 @@ def run_tracking(tracking_settings):
             # find all cines in directory
             fns = thf.find_files_by_extension(fn, '.cine', tot=True)
 
+            if len(fns) < 1:
+                fns = [fn]
+
     else:
         print 'No input file selected.  Exiting'
         sys.exit()
@@ -34,8 +36,8 @@ def run_tracking(tracking_settings):
 
     outputs = []
     for fn in fns:
-        print fn
-        try:
+
+        if True:  # try:
             movie = mi.GyroMovieInstance(fn)
             output = fn.split('/')[-1]
             output = output_dir + '/' + output.split('.')[0]
@@ -86,6 +88,15 @@ def run_tracking(tracking_settings):
                     movie.extract_frame_data(ind)
                     movie.adjust_frame()
 
+                    if (i in tracking_settings['cf']) or ('all' in tracking_settings['cf']):
+                        movie.find_points_hough()
+                        # movie.find_points_convolution()
+                        movie.save_frame_with_boxes(name=output + '/' + '%03d' % ind)
+
+
+
+                    movie.center_on_bright(2)
+
                     if 'tracked_image' in tracking_settings:
                         movie.save_frame_with_boxes(name=output + '/' + '%03d' % ind)
 
@@ -100,18 +111,13 @@ def run_tracking(tracking_settings):
 
                         movie.save_frame(name=output + '/' + '%03d_nb' % ind)
 
-                    if (i in tracking_settings['cf']) or ('all' in tracking_settings['cf']):
-                        movie.find_points_hough()
-                        movie.save_frame_with_boxes(name=output + '/' + '%03d' % ind)
-
-                    movie.center_on_bright(4)
-
                     if i == (lf - ff) - 1:
                         movie.save_frame_with_boxes(name=output + '/' + '%03d' % ind)
 
                     t = np.array(
-                        [[movie.current_time, movie.frame_current_points[j, 0], movie.frame_current_points[j, 1]] for j in
-                        range(len(movie.frame_current_points))])
+                        [[movie.current_time, movie.frame_current_points[j, 0], movie.frame_current_points[j, 1]] for j
+                         in
+                         range(len(movie.frame_current_points))])
 
                     com_data.append(t)
                     path = os.path.join(path_to_step_data, 'steps.hdf5')
@@ -124,8 +130,7 @@ def run_tracking(tracking_settings):
                 f.close()
 
                 lp.link_points(output)
-        except:
+        else:  # except:
             print 'error'
 
     return fns, outputs
-
