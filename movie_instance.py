@@ -312,7 +312,7 @@ class GyroMovieInstance:
                 ImageOps.invert(Image.fromarray(np.uint8(
                     img[pt[1] - self._pix: pt[1] + self._pix, pt[0] - self._pix: pt[0] + self._pix]))))
 
-        cine.asimage(img).save('image_kernel.png')
+        #cine.asimage(img).save('image_kernel.png')
         img = cine.asimage(img)
 
         plt.imshow(img, cmap=cm.Greys_r)
